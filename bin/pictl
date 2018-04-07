@@ -1,0 +1,42 @@
+#!/bin/bash
+
+minid=0
+maxid=5
+script=""
+
+function usage {
+	echo "Usage 1: $0 <poweroff | reboot> <0 | 1 | 2 | 3 | 4 | 5 | all>"
+	echo "Usage 2: $0 <led> <script> <0 | 1 | 2 | 3 | 4 | 5 | all>"  
+	exit
+}
+
+[[ $# -ne 2 && $# -ne 3 ]] && usage
+[[ $1 != "poweroff" ]] && [[ $1 != "reboot" ]] && [[ $1 != "led" ]] && usage
+
+command=$1
+
+if [ "${command}" = "led" ]
+then
+	[[ ! -f $2 ]] && echo "${2}: script not found" && usage
+	script=$2
+	[[ $3 -lt ${minid} || $3 -gt ${maxid} ]] && [[ $3 != "all" ]] && usage
+	[[ $3 != "all" ]] && minid=$3 && maxid=$3
+else 
+	[[ $2 -lt ${minid} || $2 -gt ${maxid} ]] && [[ $2 != "all" ]] && usage
+	[[ $2 != "all" ]] && minid=$2 && maxid=$2
+fi
+
+
+for n in $(seq ${minid} ${maxid})
+do
+	if [ "${command}" != "led" ]
+	then
+		ping -qc 1 "node${n}" 2>&1 > /dev/null
+		[[ $? -eq 0 ]] && ssh pi@node${n} sudo $command
+	else
+		ping -qc 1 "node${n}" 2>&1 > /dev/null
+		[[ $? -eq 0 ]] && ssh pi@node${n} "${script}"
+	fi
+done
+
+sudo $command

@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# SG: 26/03/2018
+# https://help.ubuntu.com/community/Internet/ConnectionSharing
+# Also refer to: https://raspberrypi.stackexchange.com/questions/48307/sharing-the-pis-wifi-connection-through-the-ethernet-port
+
+runtime=$(date "+%Y%m%d_%H%M%S")
+iptables-save > /etc/iptables.ipv4.nat.${runtime}
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+iptables -A FORWARD -o eth1 -i eth0 -s 192.168.1.0/24 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -t nat -F POSTROUTING
+iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
+
+iptables -A FORWARD -o wlan1 -i wlan0 -s 192.168.4.0/24 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -t nat -F POSTROUTING
+iptables -t nat -A POSTROUTING -o wlan1 -j MASQUERADE
+iptables-save > /etc/iptables.ipv4.nat

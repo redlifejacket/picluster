@@ -1,0 +1,2 @@
+for n in $(seq 0 5); do node="node${n}"; scp /usr/local/bin/pistatus pi@${node}:~; done
+for n in $(seq 0 5); do node="node${n}"; ssh pi@${node} sudo mv ~/pistatus /usr/local/bin; done

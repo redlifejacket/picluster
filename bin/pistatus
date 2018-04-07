@@ -1,0 +1,157 @@
+#!/usr/bin/python3
+from netifaces import interfaces, ifaddresses, AF_INET
+import urllib.request
+import socket
+import os
+import subprocess
+import time
+import sys
+import getopt
+
+MASTER_NODE = "kube"
+PAD_FORMAT_MASTER = "%-12s"
+PAD_FORMAT_WORKER = "%-12s"
+SLEEP_TIME = 300
+MODE_CONSOLE = 0
+MODE_INTERACTIVE = 1
+hostname = socket.gethostname()
+uptime_cmd = "uptime"
+exec_mode = MODE_INTERACTIVE
+
+def usage():
+    usageStr = """
+    Displays the IP addresses of the cluster nodes and their status.
+    %s [-c | --console]
+    %s [-i | --interactive]
+    Console mode: refreshes every %s seconds.
+    Interactive mode: runs once
+    """ % (__file__, __file__, SLEEP_TIME)
+    print("Usage: %s" % usageStr)
+
+def executeCommand(cmdList, dirname=None):
+    try:
+        if (dirname is not None):
+            subprocess.check_call(cmdList, cwd=dirname)
+        else:
+            subprocess.check_call(cmdList, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+
+def ip4_addresses():
+    ip_list = {}
+    for interface in interfaces():
+        ifaceAddressInfo = ifaddresses(interface)
+        if AF_INET in ifaceAddressInfo:
+            af_inet = ifaceAddressInfo[AF_INET]
+            ip_list[interface] = af_inet[0]['addr'] 
+    return ip_list
+
+def internet_on():
+    try:
+        urllib.request.urlopen("http://google.com", timeout=1)
+        return True
+    except urllib.request.URLError as err: 
+        return False
+
+def show_worker(key, list):
+    if (key in list):
+        print(PAD_FORMAT_WORKER % list[key], end=' ')
+    else:
+        print(PAD_FORMAT_WORKER % "Undefined", end=' ')
+
+def wait():
+    for i in range(SLEEP_TIME, 0, -1):
+        time.sleep(1)
+        print("Refreshing in ", end='')
+        print(str(i) + " seconds  ", end="\r")
+
+def show_results(ip_list):
+    global uptime_cmd
+    if (hostname == MASTER_NODE):
+        print("%-5s %-15s  %-20s" % ("host", "eth1", "wlan0"))
+        print("%5s" % hostname, end=' ')
+        show_worker("eth1", ip_list)
+        print(" "*4, end='')
+        show_worker("wlan0", ip_list)
+        print()
+        print("%-5s %-12s %-3s %-5s %s" % ("host", "eth0", "st", "temp", "uptime"))
+        print("%5s" % hostname, end=' ')
+    #else:
+        #uptime_cmd = "uptime -p"
+    show_worker("eth0", ip_list)
+    if internet_on():
+        print("%-4s" % "On", end='')
+    else:
+        print("%-4s" % "Off", end='')
+    print("%-4s" % get_temp(), end=' ')
+    print("%s" % get_uptime(), end='')
+
+def process_master():
+    os.system('clear')
+    print("Master Node: %s" % hostname)
+    ip_list = ip4_addresses()
+    show_results(ip_list)
+    print("-" * 50)
+    print("Worker nodes:")
+    print("%-5s %-12s %-3s %-5s %s" % ("host", "eth0", "st", "temp", "uptime"))
+    for i in range(0, 6):
+        executeCommand(["ssh", "-t", "node%s" % i, "pistatus", "--interactive"])
+
+def process_worker():
+    print("%5s" % hostname, end=' ')
+    ip_list = ip4_addresses()
+    show_results(ip_list)
+
+def console_mode():
+    global uptime_cmd 
+    global exec_mode
+    exec_mode = MODE_CONSOLE
+    uptime_cmd =  "uptime -p"
+    if (hostname == MASTER_NODE):
+        while True:
+            process_master()
+            wait()
+    else:
+        process_worker()
+
+def interactive_mode():
+    global uptime_cmd 
+    global exec_mode
+    exec_mode = MODE_INTERACTIVE
+    uptime_cmd =  "uptime"
+    if (hostname == MASTER_NODE):
+        process_master()
+    else:
+        process_worker()
+
+def get_temp():
+    res = os.popen("vcgencmd measure_temp").readline()
+    return(res.replace("temp=","").replace("\'C\n",""))
+
+def get_uptime():
+    global uptime_cmd
+    res = os.popen(uptime_cmd).readline()
+    return res
+
+def process_args():
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "ci", ["console", "interactive"])
+        if (not (opts or args)):
+            usage()
+    except getopt.GetoptError as err:
+        usage()
+        sys.exit(2)
+
+    for optionKey, optionVal in opts:
+        if optionKey in ("-c", "--console"):
+            console_mode()
+        elif optionKey in ("-i", "--interactive"):
+            interactive_mode()
+        else:
+            print("other")
+            assert False, "Unhandled exception"
+            usage()
+            break
+
+# Main
+process_args()
